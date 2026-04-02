@@ -1,0 +1,2 @@
+Trade_ID,Timestamp,Ticker_A,Ticker_B,Entry_A,Entry_B,Gamma,Direction,Size_USD,Status,Realized_PnL,Close_Timestamp,Close_A,Close_B
+TRD_1775111834,2026-04-02 14:37:14,AAPL,MSFT,255.6300048828125,369.3699951171875,0.6900068365884291,Short Spread,10000.0,OPEN,0.0,,0.0,0.0
