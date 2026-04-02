@@ -4,7 +4,7 @@ import numpy as np
 import plotly.graph_objects as go
 import yfinance as yf
 
-from data_module import pre_screen_pairs, get_sp500_tickers
+from data_module import pre_screen_pairs, get_sp500_tickers, extract_price_data
 from cointegration_module import run_kalman_filter, check_cointegration
 from optimization_module import optimize_threshold
 from backtest_module import simulate_backtest
@@ -144,16 +144,9 @@ with tab2:
                     start_d = end_d - pd.DateOffset(years=2)
                     raw = yf.download([ta, tb], start=start_d, end=end_d, progress=False)
                     
-                    if 'Adj Close' in raw.columns.get_level_values(0):
-                        d = raw['Adj Close']
-                    elif 'Close' in raw.columns.get_level_values(0):
-                        d = raw['Close']
-                    else:
-                        flat = raw.iloc[:, list(raw.columns.get_level_values(0) == 'Close')]
-                        flat.columns = flat.columns.get_level_values(1)
-                        d = flat
-                        
+                    d = extract_price_data(raw)
                     d.ffill(inplace=True)
+                    
                     kf_res = run_kalman_filter(d[ta], d[tb], burn_in=60)
                     z_latest = kf_res['z_score'].iloc[-1]
                     
@@ -187,15 +180,9 @@ with tab2:
         # Fetch live prices for open components
         live_tickers = list(set(open_trades["Ticker_A"]).union(set(open_trades["Ticker_B"])))
         raw_live = yf.download(live_tickers, period="1d")
-        
-        if 'Adj Close' in raw_live.columns.get_level_values(0):
-            live_data = raw_live['Adj Close'].iloc[-1]
-        elif 'Close' in raw_live.columns.get_level_values(0):
-            live_data = raw_live['Close'].iloc[-1]
-        else:
-            flat = raw_live.iloc[:, list(raw_live.columns.get_level_values(0) == 'Close')]
-            flat.columns = flat.columns.get_level_values(1)
-            live_data = flat.iloc[-1]
+        live_data = extract_price_data(raw_live)
+        # Because we only fetched 1 day, it could be a single row df
+        live_data = live_data.iloc[-1]
             
         for _, row in open_trades.iterrows():
             ta = row["Ticker_A"]
@@ -253,17 +240,9 @@ with tab2:
             end_d = pd.to_datetime('today')
             start_d = end_d - pd.DateOffset(years=2)
             raw = yf.download([ticker_a, ticker_b], start=start_d, end=end_d)
-            
-            if 'Adj Close' in raw.columns.get_level_values(0):
-                d = raw['Adj Close']
-            elif 'Close' in raw.columns.get_level_values(0):
-                d = raw['Close']
-            else:
-                flat = raw.iloc[:, list(raw.columns.get_level_values(0) == 'Close')]
-                flat.columns = flat.columns.get_level_values(1)
-                d = flat
-
+            d = extract_price_data(raw)
             d.ffill(inplace=True)
+
             kf_res = run_kalman_filter(d[ticker_a], d[ticker_b], burn_in=60)
             
             # Save into session state
@@ -278,7 +257,7 @@ with tab2:
             
     if "exec_data" in st.session_state and st.session_state["exec_data"]["Ticker_A"] == ticker_a and st.session_state["exec_data"]["Ticker_B"] == ticker_b:
         d = st.session_state["exec_data"]
-        st.info(f"**Live Z-Score:** `{d['Z_Score']:.2f}` | **Hedge Ratio ($\gamma$):** `{d['Gamma']:.4f}` | **{ticker_a}:** `${d['Price_A']:.2f}` | **{ticker_b}:** `${d['Price_B']:.2f}`")
+        st.info(f"**Live Z-Score:** `{d['Z_Score']:.2f}` | **Hedge Ratio (\\gamma):** `{d['Gamma']:.4f}` | **{ticker_a}:** `${d['Price_A']:.2f}` | **{ticker_b}:** `${d['Price_B']:.2f}`")
         
         ts_size = st.number_input("Trade Size (USD)", min_value=100.0, value=10000.0, step=1000.0)
         

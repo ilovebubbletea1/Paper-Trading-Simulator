@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 def simulate_backtest(y1, y2, kf_results, s0_opt, hard_stop=4.0, fee_bps=5.0):
-    """
+    r"""
     Simulates the pairs trading strategy.
     Allocates gross exposure proportionally.
     Long Spread: Buy $Y_1$, Short $Y_2$ with weight scaled by $\gamma_t$

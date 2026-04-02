@@ -5,13 +5,33 @@ from scipy.spatial.distance import pdist
 import requests
 import io
 
+def extract_price_data(raw_data):
+    """Safely extracts Close/Adj Close from yf.download regardless of yfinance version MultiIndex structure."""
+    if isinstance(raw_data.columns, pd.MultiIndex):
+        l0 = raw_data.columns.get_level_values(0)
+        l1 = raw_data.columns.get_level_values(1)
+        
+        if 'Adj Close' in l0:
+            return raw_data['Adj Close']
+        if 'Close' in l0:
+            return raw_data['Close']
+        if 'Adj Close' in l1:
+            return raw_data.xs('Adj Close', level=1, axis=1)
+        if 'Close' in l1:
+            return raw_data.xs('Close', level=1, axis=1)
+    else:
+        if 'Adj Close' in raw_data.columns:
+            return pd.DataFrame(raw_data['Adj Close'])
+        if 'Close' in raw_data.columns:
+            return pd.DataFrame(raw_data['Close'])
+            
+    return raw_data
+
 def get_sp500_tickers():
     """Fetches the current S&P 500 ticker list using multiple fallbacks for extreme reliability."""
     try:
         url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
         response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-        
-        # Use io.StringIO to prevent Pandas from misinterpreting the HTML string as a file path
         tables = pd.read_html(io.StringIO(response.text))
         df = tables[0]
         tickers = df['Symbol'].tolist()
@@ -19,7 +39,6 @@ def get_sp500_tickers():
         return tickers
     except Exception as e1:
         try:
-            # Fallback directly to a public open-source CSV (eliminates HTML parsing dependencies completely)
             csv_url = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv"
             df = pd.read_csv(csv_url)
             tickers = df['Symbol'].tolist()
@@ -28,39 +47,25 @@ def get_sp500_tickers():
         except Exception as e2:
             import streamlit as st
             st.error(f"CRITICAL: Failed to load S&P 500. HTML Error: {str(e1)} | CSV Error: {str(e2)}")
-            # Ultimate safety fallback list
             return ["AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "GOOG"]
 
 def fetch_sp500_data(start_date, end_date):
-    """
-    Downloads historical prices for the full S&P 500 universe.
-    """
+    """Downloads historical prices for the full S&P 500 universe."""
     tickers = get_sp500_tickers()
     print(f"Downloading data for {len(tickers)} S&P 500 tickers...")
     raw_data = yf.download(tickers, start=start_date, end=end_date)
     
-    if 'Adj Close' in raw_data.columns.get_level_values(0):
-        data = raw_data['Adj Close']
-    elif 'Close' in raw_data.columns.get_level_values(0):
-        data = raw_data['Close']
-    else:
-        # Fallback if unindexed
-        data = raw_data.iloc[:, list(raw_data.columns.get_level_values(0) == 'Close')]
-        data.columns = data.columns.get_level_values(1)
-        
+    data = extract_price_data(raw_data)
     data.dropna(axis=1, inplace=True) # Drop missing chunks
     return data
 
 def calculate_npd(data):
-    """
-    Calculates Normalized Price Distance (NPD) for all combinations efficiently.
-    Uses scipy.spatial.distance.pdist for mathematically fast C-optimized vector loops.
-    """
+    """Calculates Normalized Price Distance (NPD) for all combinations efficiently."""
     normalized_data = data / data.iloc[0]
     tickers = normalized_data.columns.tolist()
     n = len(tickers)
     
-    # Fast evaluation of squared euclidean distance ~ np.sum((x - y)**2) across all O(N^2) combos
+    # Fast evaluation of squared euclidean distance across O(N^2) combos
     dist_matrix = pdist(normalized_data.T.values, metric='sqeuclidean')
     
     pairs = []
@@ -79,9 +84,7 @@ def calculate_npd(data):
     return pairs_df.reset_index(drop=True)
 
 def pre_screen_pairs(start_date, end_date, top_n=50):
-    """
-    Pre-screens the S&P 500 and filters out the top performing NPD pairs.
-    """
+    """Pre-screens the S&P 500 and filters out the top performing NPD pairs."""
     data = fetch_sp500_data(start_date, end_date)
     pairs_df = calculate_npd(data)
     
