@@ -13,8 +13,8 @@ from paper_trading_module import init_paper_trading, get_account_state, update_a
 # Initialize State
 init_paper_trading()
 
-st.set_page_config(layout="wide", page_title="Institutional Pairs Trading System v1.0")
-st.title("Dynamic Kalman Filter Pairs Trading (Version 1.0)")
+st.set_page_config(layout="wide", page_title="Institutional Pairs Trading System v1.1")
+st.title("Dynamic Kalman Filter Pairs Trading (Version 1.1)")
 
 tab1, tab2 = st.tabs(["Research & Backtest", "Paper Trading Simulator"])
 
