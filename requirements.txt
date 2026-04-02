@@ -7,3 +7,4 @@ streamlit
 plotly
 html5lib
 lxml
+streamlit-autorefresh

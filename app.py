@@ -108,11 +108,76 @@ with tab1:
 with tab2:
     st.header("Paper Trading Simulator")
     
-    # 1. State Management & Account Metrics
-    account_state = get_account_state()
+    st.subheader("📡 Market Radar & Alerts")
+    c_auto, c_ref = st.columns([1, 4])
+    auto_refresh = c_auto.checkbox("Auto-Refresh (1m)")
+    if auto_refresh:
+        from streamlit_autorefresh import st_autorefresh
+        st_autorefresh(interval=60000, key="radar")
+        
+    if c_ref.button("Refresh Live Market Data"):
+        st.rerun()
+        
+    alerts = []
     trades_df = get_trades()
     open_trades = trades_df[trades_df["Status"] == "OPEN"]
     closed_trades = trades_df[trades_df["Status"] == "CLOSED"]
+    
+    if not open_trades.empty or "exec_data" in st.session_state:
+        # Collect pairs to track
+        track_pairs = []
+        for _, row in open_trades.iterrows():
+            track_pairs.append({'Type': 'OPEN', 'A': row['Ticker_A'], 'B': row['Ticker_B'], 'Dir': row['Direction']})
+            
+        if "exec_data" in st.session_state:
+            exec_A = st.session_state['exec_data']['Ticker_A']
+            exec_B = st.session_state['exec_data']['Ticker_B']
+            if not ((open_trades["Ticker_A"] == exec_A) & (open_trades["Ticker_B"] == exec_B)).any():
+                track_pairs.append({'Type': 'ENTRY', 'A': exec_A, 'B': exec_B, 'Dir': None})
+                
+        # Evaluate dynamically using silent Kalman filter instance
+        if track_pairs:
+            with st.spinner("Market Radar scanning live metrics..."):
+                for item in track_pairs:
+                    ta, tb = item['A'], item['B']
+                    end_d = pd.to_datetime('today')
+                    start_d = end_d - pd.DateOffset(years=2)
+                    raw = yf.download([ta, tb], start=start_d, end=end_d, progress=False)
+                    
+                    if 'Adj Close' in raw.columns.get_level_values(0):
+                        d = raw['Adj Close']
+                    elif 'Close' in raw.columns.get_level_values(0):
+                        d = raw['Close']
+                    else:
+                        flat = raw.iloc[:, list(raw.columns.get_level_values(0) == 'Close')]
+                        flat.columns = flat.columns.get_level_values(1)
+                        d = flat
+                        
+                    d.ffill(inplace=True)
+                    kf_res = run_kalman_filter(d[ta], d[tb], burn_in=60)
+                    z_latest = kf_res['z_score'].iloc[-1]
+                    
+                    if item['Type'] == 'OPEN':
+                        if abs(z_latest) > 4.0:
+                            alerts.append({"st": st.error, "msg": f"🚨 [STOP LOSS] {ta} vs {tb} Z-Score diverged to {z_latest:.2f}! Hard Stop-Loss required."})
+                        elif abs(z_latest) <= 0.1:
+                            alerts.append({"st": st.success, "msg": f"✅ [TAKE PROFIT] {ta} vs {tb} Spread has reverted (Z-Score: {z_latest:.2f}). Ready to Close!"})
+                    else:
+                        s0 = optimize_threshold(kf_res['z_score'], burn_in=60)
+                        if abs(z_latest) > s0:
+                            side = "Long" if z_latest < -s0 else "Short"
+                            alerts.append({"st": st.warning, "msg": f"🎯 [ENTRY SIGNAL] {ta} vs {tb} Z-Score ({z_latest:.2f}) exceeds threshold ({s0:.2f}). {side} highly recommended!"})
+
+    if alerts:
+        for a in alerts:
+            a["st"](a["msg"])
+    else:
+        st.info("No action required. Monitoring...")
+        
+    st.divider()
+    
+    # 1. State Management & Account Metrics
+    account_state = get_account_state()
     
     # Calculate Live Unrealized PnL
     unrealized_pnl = 0.0
