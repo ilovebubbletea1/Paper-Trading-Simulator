@@ -6,3 +6,4 @@ scipy
 streamlit
 plotly
 html5lib
+lxml
