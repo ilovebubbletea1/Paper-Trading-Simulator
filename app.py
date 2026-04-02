@@ -198,28 +198,28 @@ with tab2:
             
         if live_data is not None:
             for _, row in open_trades.iterrows():
-            ta = row["Ticker_A"]
-            tb = row["Ticker_B"]
-            gamma = row["Gamma"]
-            ea = row["Entry_A"]
-            eb = row["Entry_B"]
-            live_a = live_data[ta]
-            live_b = live_data[tb]
-            
-            size_usd = row["Size_USD"]
-            dir = row["Direction"]
-            
-            w_a = 1.0 / (1.0 + abs(gamma))
-            w_b = abs(gamma) / (1.0 + abs(gamma))
-            
-            ret_a = (live_a - ea) / ea
-            ret_b = (live_b - eb) / eb
-            
-            if dir == "Long Spread":
-                trade_pnl = size_usd * (w_a * ret_a - w_b * ret_b)
-            else:
-                trade_pnl = size_usd * (-w_a * ret_a + w_b * ret_b)
+                ta = row["Ticker_A"]
+                tb = row["Ticker_B"]
+                gamma = row["Gamma"]
+                ea = row["Entry_A"]
+                eb = row["Entry_B"]
+                live_a = live_data[ta]
+                live_b = live_data[tb]
                 
+                size_usd = row["Size_USD"]
+                dir = row["Direction"]
+                
+                w_a = 1.0 / (1.0 + abs(gamma))
+                w_b = abs(gamma) / (1.0 + abs(gamma))
+                
+                ret_a = (live_a - ea) / ea
+                ret_b = (live_b - eb) / eb
+                
+                if dir == "Long Spread":
+                    trade_pnl = size_usd * (w_a * ret_a - w_b * ret_b)
+                else:
+                    trade_pnl = size_usd * (-w_a * ret_a + w_b * ret_b)
+                    
                 open_positions_display.append({
                     "Trade_ID": row["Trade_ID"],
                     "Pair": f"{ta} vs {tb}",
