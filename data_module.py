@@ -3,15 +3,25 @@ import pandas as pd
 import numpy as np
 from scipy.spatial.distance import pdist
 
+import requests
+
 def get_sp500_tickers():
     """Fetches the current S&P 500 ticker list from Wikipedia."""
     try:
-        tables = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")
+        url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+        
+        # Wikipedia actively blocks the default Python User-Agent with a 403 Forbidden error.
+        # We spoof a standard browser User-Agent to bypass this block.
+        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+        
+        # pandas can read html tables directly from the source text
+        tables = pd.read_html(response.text)
         df = tables[0]
         tickers = df['Symbol'].tolist()
         tickers = [t.replace('.', '-') for t in tickers] # yfinance format for class shares
         return tickers
-    except Exception:
+    except Exception as e:
+        print(f"CRITICAL: Failed to load S&P 500 from Wikipedia: {e}")
         # Fallback list if wiki fails to load
         return ["AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "GOOG"]
 
