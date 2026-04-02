@@ -57,8 +57,10 @@ with tab1:
         st.markdown(f"**ADF Test p-value (post burn-in):** `{p_val:.4f}` {'(Cointegrated ✅)' if is_coint else '(Not Stationary ❌)'}")
         
         # 2. Optimization
-        s0_opt = optimize_threshold(kf_res['z_score'], burn_in=burn_in_days)
-        st.markdown(f"**Optimal Entry Threshold ($s_0^*$):** `±{s0_opt:.2f}` Z-Score")
+        calc_s0_opt = optimize_threshold(kf_res['z_score'], burn_in=burn_in_days)
+        cA, cB = st.columns(2)
+        cA.markdown(f"**Calculated Optimal Threshold:** `±{calc_s0_opt:.2f}` Z-Score")
+        s0_opt = cB.number_input("Tuning Threshold / Override (Z-Score)", min_value=0.1, max_value=4.0, value=round(calc_s0_opt, 2), step=0.1)
         
         # 3. Backtest
         bt_res = simulate_backtest(y1, y2, kf_res, s0_opt=s0_opt, hard_stop=4.0, fee_bps=5.0)
