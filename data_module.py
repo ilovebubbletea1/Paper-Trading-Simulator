@@ -1,31 +1,33 @@
 import yfinance as yf
 import pandas as pd
-import numpy as np
-from scipy.spatial.distance import pdist
-
 import requests
+import io
 
 def get_sp500_tickers():
-    """Fetches the current S&P 500 ticker list from Wikipedia."""
+    """Fetches the current S&P 500 ticker list using multiple fallbacks for extreme reliability."""
     try:
         url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-        
-        # Wikipedia actively blocks the default Python User-Agent with a 403 Forbidden error.
-        # We spoof a standard browser User-Agent to bypass this block.
         response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
         
-        # pandas can read html tables directly from the source text
-        tables = pd.read_html(response.text)
+        # Use io.StringIO to prevent Pandas from misinterpreting the HTML string as a file path
+        tables = pd.read_html(io.StringIO(response.text))
         df = tables[0]
         tickers = df['Symbol'].tolist()
         tickers = [t.replace('.', '-') for t in tickers] # yfinance format for class shares
         return tickers
-    except Exception as e:
-        import streamlit as st
-        st.error(f"CRITICAL: Failed to load S&P 500 from Wikipedia. Error: {str(e)}")
-        print(f"CRITICAL: Failed to load S&P 500 from Wikipedia: {e}")
-        # Fallback list if wiki fails to load
-        return ["AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "GOOG"]
+    except Exception as e1:
+        try:
+            # Fallback directly to a public open-source CSV (eliminates HTML parsing dependencies completely)
+            csv_url = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv"
+            df = pd.read_csv(csv_url)
+            tickers = df['Symbol'].tolist()
+            tickers = [t.replace('.', '-') for t in tickers]
+            return tickers
+        except Exception as e2:
+            import streamlit as st
+            st.error(f"CRITICAL: Failed to load S&P 500. HTML Error: {str(e1)} | CSV Error: {str(e2)}")
+            # Ultimate safety fallback list
+            return ["AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "GOOG"]
 
 def fetch_sp500_data(start_date, end_date):
     """
