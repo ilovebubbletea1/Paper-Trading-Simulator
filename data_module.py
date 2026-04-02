@@ -21,6 +21,8 @@ def get_sp500_tickers():
         tickers = [t.replace('.', '-') for t in tickers] # yfinance format for class shares
         return tickers
     except Exception as e:
+        import streamlit as st
+        st.error(f"CRITICAL: Failed to load S&P 500 from Wikipedia. Error: {str(e)}")
         print(f"CRITICAL: Failed to load S&P 500 from Wikipedia: {e}")
         # Fallback list if wiki fails to load
         return ["AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "GOOG"]

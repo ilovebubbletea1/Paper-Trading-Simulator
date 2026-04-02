@@ -5,3 +5,4 @@ statsmodels
 scipy
 streamlit
 plotly
+html5lib
