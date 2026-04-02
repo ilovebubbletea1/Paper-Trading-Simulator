@@ -4,7 +4,7 @@ import numpy as np
 import plotly.graph_objects as go
 import yfinance as yf
 
-from data_module import pre_screen_pairs
+from data_module import pre_screen_pairs, get_sp500_tickers
 from cointegration_module import run_kalman_filter, check_cointegration
 from optimization_module import optimize_threshold
 from backtest_module import simulate_backtest
@@ -13,8 +13,8 @@ from paper_trading_module import init_paper_trading, get_account_state, update_a
 # Initialize State
 init_paper_trading()
 
-st.set_page_config(layout="wide", page_title="Institutional Pairs Trading System")
-st.title("Dynamic Kalman Filter Pairs Trading")
+st.set_page_config(layout="wide", page_title="Institutional Pairs Trading System v1.0")
+st.title("Dynamic Kalman Filter Pairs Trading (Version 1.0)")
 
 tab1, tab2 = st.tabs(["Research & Backtest", "Paper Trading Simulator"])
 
@@ -29,7 +29,7 @@ with tab1:
         st.session_state.top_pairs = None
 
     if col3.button("Fetch & Pre-screen Data"):
-        with st.spinner("Downloading S&P 500 Tech Data & Filtering via NPD..."):
+        with st.spinner("Downloading full S&P 500 Data & Filtering ≈125,000 combinations via NPD..."):
             top_pairs, price_data = pre_screen_pairs(start_date, end_date, top_n=50)
             st.session_state.top_pairs = top_pairs
             st.session_state.price_data = price_data
@@ -176,14 +176,10 @@ with tab2:
     st.subheader("Execution Panel")
     exec1, exec2, exec3 = st.columns(3)
     
-    all_tickers = [
-        "AAPL", "MSFT", "NVDA", "AVGO", "CSCO", "ACN", "ORCL", "CRM", "AMD",
-        "TXN", "INTC", "QCOM", "IBM", "NOW", "INTU", "AMAT", "ADI", "MU",
-        "LRCX", "PANW", "KLAC", "SNPS", "CDNS", "ROP", "HPQ", "TEL", "MSI",
-        "GLW", "HPE", "FICO", "TYL", "NTAP", "WDC", "STX", "PTC", "TDY"
-    ]
-    ticker_a = exec1.selectbox("Stock A", all_tickers, index=0)
-    ticker_b = exec2.selectbox("Stock B", all_tickers, index=1)
+    # Read the live list of tickers instead of hardcoded
+    all_tickers = get_sp500_tickers()
+    ticker_a = exec1.selectbox("Stock A", all_tickers, index=all_tickers.index("AAPL") if "AAPL" in all_tickers else 0)
+    ticker_b = exec2.selectbox("Stock B", all_tickers, index=all_tickers.index("MSFT") if "MSFT" in all_tickers else 1)
     
     if exec3.button("Fetch Live Pair Data"):
         with st.spinner("Fetching data and evaluating Kalman Filter..."):

@@ -1,60 +1,62 @@
 import yfinance as yf
 import pandas as pd
 import numpy as np
+from scipy.spatial.distance import pdist
 
-def fetch_sp500_tech_data(start_date, end_date):
+def get_sp500_tickers():
+    """Fetches the current S&P 500 ticker list from Wikipedia."""
+    try:
+        tables = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")
+        df = tables[0]
+        tickers = df['Symbol'].tolist()
+        tickers = [t.replace('.', '-') for t in tickers] # yfinance format for class shares
+        return tickers
+    except Exception:
+        # Fallback list if wiki fails to load
+        return ["AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "GOOG"]
+
+def fetch_sp500_data(start_date, end_date):
     """
-    Downloads historical Adjusted Close prices for the S&P 500 Information Technology sector.
+    Downloads historical prices for the full S&P 500 universe.
     """
-    # Expanded list of prominent S&P 500 Info Tech companies as a proxy.
-    # In a fully blown version we might scrape this, but a solid representative list works best for yfinance.
-    tech_tickers = [
-        "AAPL", "MSFT", "NVDA", "AVGO", "CSCO", "ACN", "ORCL", "CRM", "AMD",
-        "TXN", "INTC", "QCOM", "IBM", "NOW", "INTU", "AMAT", "ADI", "MU",
-        "LRCX", "PANW", "KLAC", "SNPS", "CDNS", "ROP", "HPQ", "TEL", "MSI",
-        "GLW", "HPE", "FICO", "TYL", "NTAP", "WDC", "STX", "PTC", "TDY"
-    ]
+    tickers = get_sp500_tickers()
+    print(f"Downloading data for {len(tickers)} S&P 500 tickers...")
+    raw_data = yf.download(tickers, start=start_date, end=end_date)
     
-    print(f"Downloading data for {len(tech_tickers)} Tech tickers...")
-    raw_data = yf.download(tech_tickers, start=start_date, end=end_date)
-    
-    # Newer versions of yfinance might omit 'Adj Close' and pre-adjust 'Close', or structure the index differently
     if 'Adj Close' in raw_data.columns.get_level_values(0):
         data = raw_data['Adj Close']
     elif 'Close' in raw_data.columns.get_level_values(0):
         data = raw_data['Close']
     else:
-        # Fallback if the top level doesn't match standard multi-index
+        # Fallback if unindexed
         data = raw_data.iloc[:, list(raw_data.columns.get_level_values(0) == 'Close')]
         data.columns = data.columns.get_level_values(1)
         
-    data.dropna(axis=1, inplace=True) # Drop tickers with incomplete data
+    data.dropna(axis=1, inplace=True) # Drop missing chunks
     return data
 
 def calculate_npd(data):
     """
-    Calculates Normalized Price Distance (NPD) for all pairs.
-    NPD = sum_t (p_1t / p_10 - p_2t / p_20)^2
-    Returns the top pairs sorted by NPD.
+    Calculates Normalized Price Distance (NPD) for all combinations efficiently.
+    Uses scipy.spatial.distance.pdist for mathematically fast C-optimized vector loops.
     """
-    normalized_data = data / data.iloc[0] # p_it / p_i0
-    
-    tickers = normalized_data.columns
+    normalized_data = data / data.iloc[0]
+    tickers = normalized_data.columns.tolist()
     n = len(tickers)
     
-    pairs = []
+    # Fast evaluation of squared euclidean distance ~ np.sum((x - y)**2) across all O(N^2) combos
+    dist_matrix = pdist(normalized_data.T.values, metric='sqeuclidean')
     
-    # Calculate pairwise Euclidean distance on normalized prices
+    pairs = []
+    idx = 0
     for i in range(n):
         for j in range(i + 1, n):
-            t1 = tickers[i]
-            t2 = tickers[j]
-            npd = np.sum((normalized_data[t1] - normalized_data[t2]) ** 2)
             pairs.append({
-                "Ticker_A": t1,
-                "Ticker_B": t2,
-                "NPD": npd
+                "Ticker_A": tickers[i],
+                "Ticker_B": tickers[j],
+                "NPD": dist_matrix[idx]
             })
+            idx += 1
             
     pairs_df = pd.DataFrame(pairs)
     pairs_df.sort_values(by="NPD", inplace=True)
@@ -62,10 +64,9 @@ def calculate_npd(data):
 
 def pre_screen_pairs(start_date, end_date, top_n=50):
     """
-    Downloads data and returns the top_n pairs with the lowest NPD, 
-    along with the raw pricing data for those tickers.
+    Pre-screens the S&P 500 and filters out the top performing NPD pairs.
     """
-    data = fetch_sp500_tech_data(start_date, end_date)
+    data = fetch_sp500_data(start_date, end_date)
     pairs_df = calculate_npd(data)
     
     top_pairs = pairs_df.head(top_n)
