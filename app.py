@@ -138,28 +138,34 @@ with tab2:
         # Evaluate dynamically using silent Kalman filter instance
         if track_pairs:
             with st.spinner("Market Radar scanning live metrics..."):
-                for item in track_pairs:
-                    ta, tb = item['A'], item['B']
-                    end_d = pd.to_datetime('today')
-                    start_d = end_d - pd.DateOffset(years=2)
-                    raw = yf.download([ta, tb], start=start_d, end=end_d, progress=False)
+                all_radar_tickers = list(set([p['A'] for p in track_pairs] + [p['B'] for p in track_pairs]))
+                end_d = pd.to_datetime('today')
+                start_d = end_d - pd.DateOffset(years=2)
+                
+                try:
+                    raw_all = yf.download(all_radar_tickers, start=start_d, end=end_d, progress=False)
+                    d_all = extract_price_data(raw_all)
+                    d_all.ffill(inplace=True)
                     
-                    d = extract_price_data(raw)
-                    d.ffill(inplace=True)
-                    
-                    kf_res = run_kalman_filter(d[ta], d[tb], burn_in=60)
-                    z_latest = kf_res['z_score'].iloc[-1]
-                    
-                    if item['Type'] == 'OPEN':
-                        if abs(z_latest) > 4.0:
-                            alerts.append({"st": st.error, "msg": f"🚨 [STOP LOSS] {ta} vs {tb} Z-Score diverged to {z_latest:.2f}! Hard Stop-Loss required."})
-                        elif abs(z_latest) <= 0.1:
-                            alerts.append({"st": st.success, "msg": f"✅ [TAKE PROFIT] {ta} vs {tb} Spread has reverted (Z-Score: {z_latest:.2f}). Ready to Close!"})
-                    else:
-                        s0 = optimize_threshold(kf_res['z_score'], burn_in=60)
-                        if abs(z_latest) > s0:
-                            side = "Long" if z_latest < -s0 else "Short"
-                            alerts.append({"st": st.warning, "msg": f"🎯 [ENTRY SIGNAL] {ta} vs {tb} Z-Score ({z_latest:.2f}) exceeds threshold ({s0:.2f}). {side} highly recommended!"})
+                    if not d_all.empty:
+                        for item in track_pairs:
+                            ta, tb = item['A'], item['B']
+                            if ta in d_all.columns and tb in d_all.columns:
+                                kf_res = run_kalman_filter(d_all[ta], d_all[tb], burn_in=60)
+                                z_latest = kf_res['z_score'].iloc[-1]
+                                
+                                if item['Type'] == 'OPEN':
+                                    if abs(z_latest) > 4.0:
+                                        alerts.append({"st": st.error, "msg": f"🚨 [STOP LOSS] {ta} vs {tb} Z-Score diverged to {z_latest:.2f}! Hard Stop-Loss required."})
+                                    elif abs(z_latest) <= 0.1:
+                                        alerts.append({"st": st.success, "msg": f"✅ [TAKE PROFIT] {ta} vs {tb} Spread has reverted (Z-Score: {z_latest:.2f}). Ready to Close!"})
+                                else:
+                                    s0 = optimize_threshold(kf_res['z_score'], burn_in=60)
+                                    if abs(z_latest) > s0:
+                                        side = "Long" if z_latest < -s0 else "Short"
+                                        alerts.append({"st": st.warning, "msg": f"🎯 [ENTRY SIGNAL] {ta} vs {tb} Z-Score ({z_latest:.2f}) exceeds threshold ({s0:.2f}). {side} highly recommended!"})
+                except Exception as e:
+                    alerts.append({"st": st.warning, "msg": f"📡 API Rate Limit Hit: Temporary network error preventing scan."})
 
     if alerts:
         for a in alerts:
@@ -179,12 +185,19 @@ with tab2:
     if not open_trades.empty:
         # Fetch live prices for open components
         live_tickers = list(set(open_trades["Ticker_A"]).union(set(open_trades["Ticker_B"])))
-        raw_live = yf.download(live_tickers, period="1d")
-        live_data = extract_price_data(raw_live)
-        # Because we only fetched 1 day, it could be a single row df
-        live_data = live_data.iloc[-1]
+        try:
+            raw_live = yf.download(live_tickers, period="1d", progress=False)
+            live_data = extract_price_data(raw_live)
             
-        for _, row in open_trades.iterrows():
+            if not live_data.empty:
+                live_data = live_data.iloc[-1]
+            else:
+                live_data = None
+        except:
+            live_data = None
+            
+        if live_data is not None:
+            for _, row in open_trades.iterrows():
             ta = row["Ticker_A"]
             tb = row["Ticker_B"]
             gamma = row["Gamma"]
@@ -207,16 +220,18 @@ with tab2:
             else:
                 trade_pnl = size_usd * (-w_a * ret_a + w_b * ret_b)
                 
-            open_positions_display.append({
-                "Trade_ID": row["Trade_ID"],
-                "Pair": f"{ta} vs {tb}",
-                "Direction": dir,
-                "Size": f"${size_usd:,.2f}",
-                "Live A": f"${live_a:.2f}",
-                "Live B": f"${live_b:.2f}",
-                "Unrealized PnL": trade_pnl
-            })
-            unrealized_pnl += trade_pnl
+                open_positions_display.append({
+                    "Trade_ID": row["Trade_ID"],
+                    "Pair": f"{ta} vs {tb}",
+                    "Direction": dir,
+                    "Size": f"${size_usd:,.2f}",
+                    "Live A": f"${live_a:.2f}",
+                    "Live B": f"${live_b:.2f}",
+                    "Unrealized PnL": trade_pnl
+                })
+                unrealized_pnl += trade_pnl
+        else:
+            st.error("Yahoo Finance API Rate Limit Hit. Prices unavailable.")
             
     # Metric Cards
     m1, m2, m3 = st.columns(3)
